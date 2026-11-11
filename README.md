@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A FastAPI image-processing service that combines burst photos into a cleaner, sharper, upscaled output.**
+**A FastAPI image-processing service for burst-photo alignment, fusion, upscaling and colour grading.**
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
@@ -11,25 +11,60 @@
 
 </div>
 
-## ✨ What It Does
+## Overview
 
-Upload **2–4 burst frames** and the API processes them through three stages:
+AI Camera Backend accepts 2–4 burst photographs and processes them into one enhanced JPEG. It uses computer-vision techniques to align frames, combine image information, upscale the result and apply colour grading.
 
-1. **Alignment and fusion** — aligns the input frames and combines them using the selected fusion method.
-2. **Upscaling** — resizes the fused image toward the requested long-edge resolution.
-3. **Color grading** — applies an automatic grade or a supplied `.cube` LUT.
+## Processing Pipeline
 
-The processed result is returned as a high-quality JPEG.
+```text
+2–4 Uploaded Images
+        |
+        v
+Decode images (OpenCV)
+        |
+        v
+Sharpness scoring
+        |
+        v
+ECC affine alignment
+        |
+        v
+Frame fusion
+(Mertens or average + denoising)
+        |
+        v
+Upscaling
+(Lanczos or optional Real-ESRGAN)
+        |
+        v
+Colour grading
+(Auto or .cube LUT)
+        |
+        v
+High-quality JPEG response
+```
 
-## 🧰 Tech Stack
+## Features
 
-- Python
-- FastAPI and Uvicorn
-- OpenCV
-- NumPy
-- python-multipart for file uploads
+- Accepts 2–4 uploaded burst frames.
+- Selects a reference frame using Laplacian-variance sharpness scoring.
+- Aligns frames with Enhanced Correlation Coefficient (ECC) affine registration.
+- Supports Mertens exposure fusion or average fusion with coloured-image denoising.
+- Supports Lanczos resizing and optional Real-ESRGAN upscaling.
+- Applies gray-world white balance, contrast and saturation adjustments.
+- Supports optional 3D `.cube` LUT colour grading.
+- Exposes interactive API documentation through FastAPI.
 
-## 📁 Project Structure
+## Tech Stack
+
+- **Language:** Python
+- **API:** FastAPI, Uvicorn
+- **Computer vision:** OpenCV
+- **Numerical processing:** NumPy
+- **Uploads:** python-multipart
+
+## Project Structure
 
 ```text
 Camera/
@@ -43,7 +78,7 @@ Camera/
 └── README.md
 ```
 
-## ⚙️ Run Locally
+## Run Locally
 
 1. Clone the repository:
 
@@ -56,8 +91,8 @@ Camera/
 
    ```bash
    python -m venv .venv
-   # Windows
-   .venv\Scripts\activate
+   # Windows PowerShell
+   .venv\Scripts\Activate.ps1
    # macOS / Linux
    source .venv/bin/activate
    ```
@@ -68,21 +103,21 @@ Camera/
    pip install -r requirements.txt
    ```
 
-4. Run the API:
+4. Start the API:
 
    ```bash
    uvicorn app.main:app --reload
    ```
 
-5. Open the interactive API documentation at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+5. Open the API docs at http://127.0.0.1:8000/docs.
 
-## 🔌 API
+## API Reference
 
 ### Health check
 
 `GET /health`
 
-Returns a simple service status:
+Returns:
 
 ```json
 {
@@ -90,20 +125,20 @@ Returns a simple service status:
 }
 ```
 
-### Process a burst
+### Process burst images
 
 `POST /process` — multipart form-data.
 
 | Field | Description | Default |
 |---|---|---|
-| frames | 2–4 uploaded image files | Required |
-| fusion_method | `mertens` or `average` | `mertens` |
-| upscale_method | `lanczos` or `realesrgan` | `lanczos` |
-| target_long_edge | Desired long-edge size in pixels | `3840` |
-| grade_style | `auto` or `lut` | `auto` |
-| lut_path | Path to a `.cube` LUT when using LUT grading | None |
+| `frames` | 2–4 image files | Required |
+| `fusion_method` | `mertens` or `average` | `mertens` |
+| `upscale_method` | `lanczos` or `realesrgan` | `lanczos` |
+| `target_long_edge` | Requested long-edge size in pixels | `3840` |
+| `grade_style` | `auto` or `lut` | `auto` |
+| `lut_path` | Server-side path to a `.cube` LUT | None |
 
-Example with cURL:
+Example:
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/process" \
@@ -116,24 +151,30 @@ curl -X POST "http://127.0.0.1:8000/process" \
   --output enhanced.jpg
 ```
 
-## 🔬 Pipeline Modules
+## Technical Notes
 
-- `align_fuse.py` — burst alignment and image fusion.
-- `upscale.py` — image resizing/upscaling.
-- `color_grade.py` — automatic or LUT-based color grading.
+- ECC alignment uses an affine warp and falls back to the original frame if OpenCV alignment raises an error.
+- Mertens fusion combines exposure/detail information; it is not a general-purpose guarantee of perfect noise removal.
+- Lanczos is an interpolation-based resizing method, not an AI super-resolution model.
+- Real-ESRGAN requires its optional runtime and model weights. If that path fails, the current implementation falls back to Lanczos.
+- LUT grading requires a valid server-accessible `.cube` file.
 
-## ⚠️ Notes
+## Roadmap
 
-- The API accepts 2–4 images per processing request.
-- The default output is JPEG encoded at quality 95.
-- Real-ESRGAN and LUT modes depend on the corresponding model/runtime or LUT file being available in your environment.
+- Add upload-size, image-dimension and decoded-pixel limits.
+- Validate fusion/upscale/grade options and LUT paths.
+- Add tests for alignment, fusion, upscaling and colour grading.
+- Add processing-time and memory benchmarks.
+- Add progress reporting for large image requests.
+- Provide before/after sample images and reproducible test inputs.
 
-## 🗺️ Future Improvements
+## Interview Notes
 
-- Add upload-size and image-dimension limits.
-- Add tests for each pipeline stage.
-- Add progress reporting for long-running image processing.
-- Document and package optional model dependencies separately.
+**Why align frames before fusion?** Small camera movements cause scene details to appear at different coordinates. Alignment maps frames to a common reference so fusion combines corresponding regions.
+
+**Why select the sharpest frame?** Laplacian variance provides a simple focus/sharpness estimate. The selected frame becomes the geometric reference for the other frames.
+
+**What is the difference between Lanczos and Real-ESRGAN?** Lanczos resizes using interpolation, while Real-ESRGAN is a learned super-resolution model that can reconstruct plausible high-frequency details.
 
 ---
 
